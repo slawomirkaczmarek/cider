@@ -9,42 +9,58 @@ use clap::{Parser, Subcommand};
 #[command(arg_required_else_help = true, version)]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
+    /// Output JSON
+    #[arg(global = true, long)]
+    json: bool,
 }
-
-// TODO: document the CLI
 
 #[derive(Subcommand, Clone)]
 enum Command {
+    /// Add an existing prefix
     Add {
+        /// Prefix name
         prefix: String,
+        /// Existing prefix's directory
         #[arg(long, short)]
         dir: String,
     },
+    /// Create a new prefix
     Create {
+        /// Prefix name
         prefix: String,
+        /// Custom directory for the prefix
         #[arg(long, short)]
         dir: Option<String>,
     },
     Install {
         path: String,
     },
+    /// Manage prefixes
     Prefix {
-        #[arg(action, conflicts_with_all = ["list", "settings"], long)]
+        /// Get or set the prefix as default
+        #[arg(conflicts_with_all = ["list", "settings"], long)]
         default: bool,
-        #[arg(action, conflicts_with = "settings", long, short)]
+        /// List prefixes
+        #[arg(conflicts_with = "settings", long, short)]
         list: bool,
+        /// Prefix name
         #[arg(long, short)]
         prefix: Option<String>,
+        /// Set a configuration value, <KEY=VALUE>
         #[arg(long = "config", short = 'c', value_parser = parse_key_value_pair)]
         settings: Vec<(String, String)>,
     },
+    /// Remove a prefix
     #[clap(alias = "rm")]
     Remove {
+        /// Prefix name
         prefix: String,
     },
+    /// Run a command
     Run {
         command: String,
+        /// Prefix name
         #[arg(long, short)]
         prefix: Option<String>,
         #[arg(last = true)]
@@ -59,18 +75,17 @@ fn parse_key_value_pair(key_value_pair: &str) -> Result<(String, String)> {
 
 fn main() -> Result<()> {
     let args = Cli::parse();
-
     match args.command {
-        Some(Command::Add { prefix, dir }) => {
+        Command::Add { prefix, dir } => {
             command::add_prefix(prefix, dir)
         },
-        Some(Command::Create { prefix, dir }) => {
+        Command::Create { prefix, dir } => {
             command::create_prefix(prefix, dir)
         },
-        Some(Command::Install { path }) => {
+        Command::Install { path } => {
             command::install(path)
         },
-        Some(Command::Prefix { default, list, prefix, settings }) => {
+        Command::Prefix { default, list, prefix, settings } => {
             if default {
                 command::default_prefix(prefix)
             } else if list {
@@ -79,12 +94,11 @@ fn main() -> Result<()> {
                 command::prefix_config(prefix, settings)
             }
         },
-        Some(Command::Remove { prefix }) => {
+        Command::Remove { prefix } => {
             command::remove_prefix(Some(prefix))
         },
-        Some(Command::Run { command, prefix, args }) => {
+        Command::Run { command, prefix, args } => {
             command::run(command, prefix, args)
         },
-        None => { Ok(()) },
     }
 }
