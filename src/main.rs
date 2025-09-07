@@ -87,9 +87,9 @@ fn main() -> Result<()> {
         },
         Command::Prefix { default, list, prefix, settings } => {
             if default {
-                command::default_prefix(prefix)
+                command::default_prefix(prefix, args.json)
             } else if list {
-                command::list_prefixes()
+                command::list_prefixes(args.json)
             } else {
                 command::prefix_config(prefix, settings)
             }

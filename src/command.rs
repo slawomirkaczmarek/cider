@@ -1,6 +1,7 @@
 use std::{path::PathBuf, process::Command};
 
 use anyhow::{anyhow, Context, Result};
+use serde_json::json;
 
 use crate::settings::{PrefixProperties, Properties};
 
@@ -96,6 +97,12 @@ macro_rules! print_properties {
     }
 }
 
+macro_rules! print_default_prefix_json {
+    ($default_prefix:expr) => {
+        println!("{}", json!({ "default": $default_prefix }));
+    };
+}
+
 macro_rules! wine_cmd {
     ($prefix_path:expr) => {
         Command::new((crate::settings::app_support_dir()?).join(GPTK_APP_FILE_NAME).join(WINE_EXECUTABLE_PATH).into_os_string().as_os_str())
@@ -161,26 +168,41 @@ pub fn create_prefix(prefix: String, dir: Option<String>) -> Result<()> {
     }
 }
 
-pub fn default_prefix(prefix: Option<String>) -> Result<()> {
+pub fn default_prefix(prefix: Option<String>, json: bool) -> Result<()> {
     let mut properties = crate::settings::open()?;
-
     match prefix {
         Some(prefix) => {
-            if properties.prefixes.contains_key(&prefix) {
+            if prefix.is_empty() {
+                properties.default_prefix = None;
+                if json {
+                    print_default_prefix_json!(properties.default_prefix);
+                } else {
+                    println!("Default prefix unset");
+                }
+                crate::settings::save(&properties)
+            } else if properties.prefixes.contains_key(&prefix) {
                 properties.default_prefix = Some(prefix.clone());
-                println!("Prefix `{}` set as default", &prefix);
+                if json {
+                    print_default_prefix_json!(properties.default_prefix);
+                } else {
+                    println!("Prefix `{}` set as default", &prefix);
+                }
                 crate::settings::save(&properties)
             } else {
                 Err(anyhow!(prefix_not_found!(prefix)))
             }
         },
         None => {
-            match properties.default_prefix {
-                Some(default_prefix) => {
-                    println!("Default prefix: `{default_prefix}`");
-                },
-                None => {
-                    println!("No default prefix set")
+            if json {
+                print_default_prefix_json!(properties.default_prefix);
+            } else {
+                match properties.default_prefix {
+                    Some(default_prefix) => {
+                        println!("Default prefix: `{default_prefix}`");
+                    },
+                    None => {
+                        println!("No default prefix set");
+                    }
                 }
             }
             Ok(())
@@ -188,13 +210,18 @@ pub fn default_prefix(prefix: Option<String>) -> Result<()> {
     }
 }
 
-pub fn list_prefixes() -> Result<()> {
+pub fn list_prefixes(json: bool) -> Result<()> {
     let properties = crate::settings::open()?;
-
-    for prefix in properties.prefixes.keys() {
-        println!("{prefix}{}", if properties.default_prefix.as_ref() == Some(prefix) { " (default)" } else { "" });
+    if json {
+        println!("{}", json!({
+            "default": properties.default_prefix,
+            "prefixes": properties.prefixes.keys().collect::<Vec<_>>(),
+        }));
+    } else {
+        for prefix in properties.prefixes.keys() {
+            println!("{prefix}{}", if properties.default_prefix.as_ref() == Some(prefix) { " (default)" } else { "" });
+        }
     }
-
     Ok(())
 }
 
