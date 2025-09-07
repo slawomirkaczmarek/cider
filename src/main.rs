@@ -75,30 +75,31 @@ fn parse_key_value_pair(key_value_pair: &str) -> Result<(String, String)> {
 
 fn main() -> Result<()> {
     let args = Cli::parse();
+    let json = args.json;
     match args.command {
         Command::Add { prefix, dir } => {
-            command::add_prefix(prefix, dir)
+            command::add_prefix(prefix, dir, json)
         },
         Command::Create { prefix, dir } => {
-            command::create_prefix(prefix, dir)
+            command::create_prefix(prefix, dir, json)
         },
         Command::Install { path } => {
-            command::install(path)
+            command::install(path, json)
         },
         Command::Prefix { default, list, prefix, settings } => {
             if default {
-                command::default_prefix(prefix, args.json)
+                command::default_prefix(prefix, json)
             } else if list {
-                command::list_prefixes(args.json)
+                command::list_prefixes(json)
             } else {
-                command::prefix_config(prefix, settings)
+                command::prefix_config(prefix, settings, json)
             }
         },
         Command::Remove { prefix } => {
-            command::remove_prefix(Some(prefix))
+            command::remove_prefix(Some(prefix), json)
         },
         Command::Run { command, prefix, args } => {
-            command::run(command, prefix, args)
+            command::run(command, prefix, args, json)
         },
     }
 }
