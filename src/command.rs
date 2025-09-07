@@ -1,6 +1,7 @@
 use std::{path::PathBuf, process::Command};
 
 use anyhow::{anyhow, Context, Result};
+use serde_json::json;
 
 use crate::settings::{PrefixProperties, Properties};
 
@@ -96,6 +97,42 @@ macro_rules! print_properties {
     }
 }
 
+macro_rules! print_json {
+    ($($json:tt)+) => {
+        println!("{}", json!($($json)+));
+    };
+}
+
+macro_rules! print_ok_json {
+    () => {
+        print_json!({ "status": 0 });
+    };
+}
+
+macro_rules! print_default_prefix_json {
+    ($default_prefix:expr) => {
+        print_json!({ "default": $default_prefix });
+    };
+}
+
+macro_rules! print_properties_json {
+    ($prefix:ident, $prefix_properties:ident) => {
+        let default_dir = match &$prefix_properties.custom_dir {
+            Some(_) => {
+                None
+            },
+            None => {
+                Some(std_prefix_path_string!(&$prefix))
+            }
+        };
+        print_json!({
+            "prefix": $prefix,
+            "defaultDir": default_dir,
+            "properties": $prefix_properties,
+        });
+    };
+}
+
 macro_rules! wine_cmd {
     ($prefix_path:expr) => {
         Command::new((crate::settings::app_support_dir()?).join(GPTK_APP_FILE_NAME).join(WINE_EXECUTABLE_PATH).into_os_string().as_os_str())
@@ -117,7 +154,7 @@ fn select_prefix(prefix: Option<String>, properties: &Properties) -> Result<Stri
     }
 }
 
-pub fn add_prefix(prefix: String, dir: String) -> Result<()> {
+pub fn add_prefix(prefix: String, dir: String, json: bool) -> Result<()> {
     add_prefix_prelude!(properties, prefix, prefix_properties);
 
     if !PathBuf::from(&dir).exists() {
@@ -128,12 +165,16 @@ pub fn add_prefix(prefix: String, dir: String) -> Result<()> {
 
     properties.prefixes.insert(prefix.clone(), prefix_properties);
 
-    println!("Prefix `{}` added", &prefix);
+    if json {
+        print_ok_json!();
+    } else {
+        println!("Prefix `{}` added", &prefix);
+    }
 
     crate::settings::save(&properties)
 }
 
-pub fn create_prefix(prefix: String, dir: Option<String>) -> Result<()> {
+pub fn create_prefix(prefix: String, dir: Option<String>, json: bool) -> Result<()> {
     add_prefix_prelude!(properties, prefix, prefix_properties);
 
     let prefix_path = match dir {
@@ -153,7 +194,11 @@ pub fn create_prefix(prefix: String, dir: Option<String>) -> Result<()> {
     let status = process.wait()?;
 
     if status.success() {
-        println!("Prefix `{}` created", &prefix);
+        if json {
+            print_ok_json!();
+        } else {
+            println!("Prefix `{}` created", &prefix);
+        }
         properties.prefixes.insert(prefix.clone(), prefix_properties);
         crate::settings::save(&properties)
     } else {
@@ -161,26 +206,41 @@ pub fn create_prefix(prefix: String, dir: Option<String>) -> Result<()> {
     }
 }
 
-pub fn default_prefix(prefix: Option<String>) -> Result<()> {
+pub fn default_prefix(prefix: Option<String>, json: bool) -> Result<()> {
     let mut properties = crate::settings::open()?;
-
     match prefix {
         Some(prefix) => {
-            if properties.prefixes.contains_key(&prefix) {
+            if prefix.is_empty() {
+                properties.default_prefix = None;
+                if json {
+                    print_default_prefix_json!(properties.default_prefix);
+                } else {
+                    println!("Default prefix unset");
+                }
+                crate::settings::save(&properties)
+            } else if properties.prefixes.contains_key(&prefix) {
                 properties.default_prefix = Some(prefix.clone());
-                println!("Prefix `{}` set as default", &prefix);
+                if json {
+                    print_default_prefix_json!(properties.default_prefix);
+                } else {
+                    println!("Prefix `{}` set as default", &prefix);
+                }
                 crate::settings::save(&properties)
             } else {
                 Err(anyhow!(prefix_not_found!(prefix)))
             }
         },
         None => {
-            match properties.default_prefix {
-                Some(default_prefix) => {
-                    println!("Default prefix: `{default_prefix}`");
-                },
-                None => {
-                    println!("No default prefix set")
+            if json {
+                print_default_prefix_json!(properties.default_prefix);
+            } else {
+                match properties.default_prefix {
+                    Some(default_prefix) => {
+                        println!("Default prefix: `{default_prefix}`");
+                    },
+                    None => {
+                        println!("No default prefix set");
+                    }
                 }
             }
             Ok(())
@@ -188,17 +248,22 @@ pub fn default_prefix(prefix: Option<String>) -> Result<()> {
     }
 }
 
-pub fn list_prefixes() -> Result<()> {
+pub fn list_prefixes(json: bool) -> Result<()> {
     let properties = crate::settings::open()?;
-
-    for prefix in properties.prefixes.keys() {
-        println!("{prefix}{}", if properties.default_prefix.as_ref() == Some(prefix) { " (default)" } else { "" });
+    if json {
+        print_json!({
+            "default": properties.default_prefix,
+            "prefixes": properties.prefixes.keys().collect::<Vec<_>>(),
+        });
+    } else {
+        for prefix in properties.prefixes.keys() {
+            println!("{prefix}{}", if properties.default_prefix.as_ref() == Some(prefix) { " (default)" } else { "" });
+        }
     }
-
     Ok(())
 }
 
-pub fn remove_prefix(prefix: Option<String>) -> Result<()> {
+pub fn remove_prefix(prefix: Option<String>, json: bool) -> Result<()> {
     mut_prefix_properties!(properties, prefix, prefix_properties);
 
     let prefix_path = match &prefix_properties.custom_dir {
@@ -216,25 +281,33 @@ pub fn remove_prefix(prefix: Option<String>) -> Result<()> {
     }
     properties.prefixes.remove(&prefix);
 
-    println!("Prefix `{}` removed", &prefix);
+    if json {
+        print_ok_json!();
+    } else {
+        println!("Prefix `{}` removed", &prefix);
+    }
 
     crate::settings::save(&properties)
 }
 
-pub fn prefix_config(prefix: Option<String>, settings: Vec<(String, String)>) -> Result<()> {
+pub fn prefix_config(prefix: Option<String>, settings: Vec<(String, String)>, json: bool) -> Result<()> {
     if settings.is_empty() {
         prefix_properties!(properties, prefix, prefix_properties);
 
-        println!("Prefix `{}` properties:", &prefix);
-        print_properties!(
-            (CUSTOM_DIR_KEY, prefix_properties.custom_dir.as_deref().unwrap_or(format!(" # {} (default)", std_prefix_path!(&prefix).display()).as_str())),
-            (HUD_KEY, prefix_properties.hud),
-            (ESYNC_KEY, prefix_properties.esync),
-            (RETINA_MODE_KEY, prefix_properties.retina_mode),
-            (AVX_KEY, prefix_properties.avx),
-            (DXR_KEY, prefix_properties.dxr),
-            (METALFX_KEY, prefix_properties.metalfx)
-        );
+        if json {
+            print_properties_json!(prefix, prefix_properties);
+        } else {
+            println!("Prefix `{}` properties:", &prefix);
+            print_properties!(
+                (CUSTOM_DIR_KEY, prefix_properties.custom_dir.as_deref().unwrap_or(format!(" # {} (default)", std_prefix_path!(&prefix).display()).as_str())),
+                (HUD_KEY, prefix_properties.hud),
+                (ESYNC_KEY, prefix_properties.esync),
+                (RETINA_MODE_KEY, prefix_properties.retina_mode),
+                (AVX_KEY, prefix_properties.avx),
+                (DXR_KEY, prefix_properties.dxr),
+                (METALFX_KEY, prefix_properties.metalfx)
+            );
+        }
 
         Ok(())
     } else {
@@ -246,15 +319,15 @@ pub fn prefix_config(prefix: Option<String>, settings: Vec<(String, String)>) ->
             match key.as_str() {
                 CUSTOM_DIR_KEY => {
                     prefix_properties.custom_dir = (!value.is_empty()).then_some(value);
-                    print_properties!((CUSTOM_DIR_KEY, prefix_properties.custom_dir.as_deref().unwrap_or("")));
+                    if !json { print_properties!((CUSTOM_DIR_KEY, prefix_properties.custom_dir.as_deref().unwrap_or(""))); }
                 },
                 HUD_KEY => {
                     prefix_properties.hud = string_to_bool!(value);
-                    print_properties!((HUD_KEY, prefix_properties.hud));
+                    if !json { print_properties!((HUD_KEY, prefix_properties.hud)); }
                 },
                 ESYNC_KEY => {
                     prefix_properties.esync = string_to_bool!(value);
-                    print_properties!((ESYNC_KEY, prefix_properties.esync));
+                    if !json { print_properties!((ESYNC_KEY, prefix_properties.esync)); }
                 },
                 RETINA_MODE_KEY => {
                     let new_value = string_to_bool!(value);
@@ -262,20 +335,20 @@ pub fn prefix_config(prefix: Option<String>, settings: Vec<(String, String)>) ->
                         prefix_properties.retina_mode = new_value;
                         set_retina_mode = true;
                     } else {
-                        print_properties!((RETINA_MODE_KEY, prefix_properties.retina_mode));
+                        if !json { print_properties!((RETINA_MODE_KEY, prefix_properties.retina_mode)); }
                     }
                 },
                 AVX_KEY => {
                     prefix_properties.avx = string_to_bool!(value);
-                    print_properties!((AVX_KEY, prefix_properties.avx));
+                    if !json { print_properties!((AVX_KEY, prefix_properties.avx)); }
                 },
                 DXR_KEY => {
                     prefix_properties.dxr = string_to_bool!(value);
-                    print_properties!((DXR_KEY, prefix_properties.dxr));
+                    if !json { print_properties!((DXR_KEY, prefix_properties.dxr)); }
                 },
                 METALFX_KEY => {
                     prefix_properties.metalfx = string_to_bool!(value);
-                    print_properties!((METALFX_KEY, prefix_properties.metalfx));
+                    if !json { print_properties!((METALFX_KEY, prefix_properties.metalfx)); }
                 },
                 _ => {
                     return Err(anyhow!("Unsupported property `{}`", key));
@@ -284,7 +357,7 @@ pub fn prefix_config(prefix: Option<String>, settings: Vec<(String, String)>) ->
         }
 
         if set_retina_mode {
-            prefix_path!(prefix_path, prefix, prefix_properties);
+            prefix_path!(prefix_path, &prefix, prefix_properties);
 
             let mut process = wine_cmd!(prefix_path)
                 .arg("reg")
@@ -302,18 +375,20 @@ pub fn prefix_config(prefix: Option<String>, settings: Vec<(String, String)>) ->
             let status = process.wait()?;
 
             if !status.success() {
-                println!("Unable to set Retina mode: {status}");
+                if !json { println!("Unable to set Retina mode: {status}"); }
                 prefix_properties.retina_mode = !prefix_properties.retina_mode;
             }
 
-            print_properties!((RETINA_MODE_KEY, prefix_properties.retina_mode));
+            if !json { print_properties!((RETINA_MODE_KEY, prefix_properties.retina_mode)); }
         }
+
+        if json { print_properties_json!(prefix, prefix_properties); }
 
         crate::settings::save(&properties)
     }
 }
 
-pub fn run(command: String, prefix: Option<String>, args: Vec<String>) -> Result<()> {
+pub fn run(command: String, prefix: Option<String>, args: Vec<String>, json: bool) -> Result<()> {
     prefix_properties!(properties, prefix, prefix_properties);
 
     prefix_path!(prefix_path, prefix, prefix_properties);
@@ -330,14 +405,15 @@ pub fn run(command: String, prefix: Option<String>, args: Vec<String>) -> Result
 
     let status = process.wait()?;
 
-    if !status.success() {
-        println!("Unable to run command: {status}");
+    if status.success() {
+        if json { print_ok_json!(); };
+        Ok(())
+    } else {
+        Err(anyhow!("Unable to run command: {status}"))
     }
-
-    Ok(())
 }
 
-pub fn install(path: String) -> Result<()> {
+pub fn install(path: String, json: bool) -> Result<()> {
     let from = PathBuf::from(&path);
     
     if !from.exists() || !from.join(WINE_EXECUTABLE_PATH).exists() {
@@ -358,9 +434,13 @@ pub fn install(path: String) -> Result<()> {
     let status = process.wait()?;
 
     if status.success() {
-        println!("Game Porting Toolkit installed");
+        if json {
+            print_ok_json!();
+        } else {
+            println!("Game Porting Toolkit installed");
+        }
+        Ok(())
     } else {
-        println!("Unable to install Game Porting Toolkit: {status}");
+        Err(anyhow!("Unable to install Game Porting Toolkit: {status}"))
     }
-    Ok(())
 }
