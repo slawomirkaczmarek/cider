@@ -1,4 +1,5 @@
 mod command;
+mod downloader;
 mod settings;
 
 use anyhow::{Context, Result};
@@ -33,9 +34,6 @@ enum Command {
         #[arg(long, short)]
         dir: Option<String>,
     },
-    Install {
-        path: String,
-    },
     /// Manage prefixes
     Prefix {
         /// Get or set the prefix as default
@@ -66,6 +64,15 @@ enum Command {
         #[arg(last = true)]
         args: Vec<String>,
     },
+    /// Update Game Porting Toolkit runtime
+    Update {
+        /// Check for update, but do not actually download and install it
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+        /// Force update
+        #[arg(long, short)]
+        force: bool,
+    },
 }
 
 fn parse_key_value_pair(key_value_pair: &str) -> Result<(String, String)> {
@@ -83,9 +90,6 @@ fn main() -> Result<()> {
         Command::Create { prefix, dir } => {
             command::create_prefix(prefix, dir, json)
         },
-        Command::Install { path } => {
-            command::install(path, json)
-        },
         Command::Prefix { default, list, prefix, settings } => {
             if default {
                 command::default_prefix(prefix, json)
@@ -100,6 +104,9 @@ fn main() -> Result<()> {
         },
         Command::Run { command, prefix, args } => {
             command::run(command, prefix, args, json)
+        },
+        Command::Update { dry_run, force } => {
+            command::update(dry_run, force, json)
         },
     }
 }

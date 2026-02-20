@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -11,6 +10,7 @@ const SETTINGS_FILE_NAME: &str = "com.slawomirkaczmarek.cider.plist";
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Properties {
+    pub runtime_version: String,
     pub default_prefix: Option<String>,
     pub prefixes: HashMap<String, PrefixProperties>,
 }
@@ -29,7 +29,7 @@ pub struct PrefixProperties {
 
 macro_rules! settings_file {
     () => {
-        (app_support_dir()?).join(SETTINGS_FILE_NAME)
+        app_support_dir()?.join(SETTINGS_FILE_NAME)
     };
 }
 

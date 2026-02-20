@@ -3,7 +3,7 @@ use std::{path::PathBuf, process::Command};
 use anyhow::{anyhow, Context, Result};
 use serde_json::json;
 
-use crate::settings::{PrefixProperties, Properties};
+use crate::{downloader, settings::{self, PrefixProperties, Properties}};
 
 const GPTK_APP_FILE_NAME: &str = "Game Porting Toolkit.app";
 
@@ -25,7 +25,7 @@ macro_rules! prefix_not_found {
 
 macro_rules! prefix_properties {
     ($properties:ident, $prefix:ident, $prefix_properties:ident) => {
-        let $properties = crate::settings::open()?;
+        let $properties = settings::open()?;
         let $prefix = select_prefix($prefix, &$properties)?;
         let $prefix_properties = $properties.prefixes.get(&$prefix).with_context(|| prefix_not_found!($prefix))?;
     };
@@ -33,7 +33,7 @@ macro_rules! prefix_properties {
 
 macro_rules! mut_prefix_properties {
     ($properties:ident, $prefix:ident, $prefix_properties:ident) => {
-        let mut $properties = crate::settings::open()?;
+        let mut $properties = settings::open()?;
         let $prefix = select_prefix($prefix, &$properties)?;
         #[allow(unused_mut)]
         let mut $prefix_properties = $properties.prefixes.get_mut(&$prefix).with_context(|| prefix_not_found!($prefix))?;
@@ -42,7 +42,7 @@ macro_rules! mut_prefix_properties {
 
 macro_rules! add_prefix_prelude {
     ($properties:ident, $prefix:ident, $prefix_properties:ident) => {
-        let mut $properties = crate::settings::open()?;
+        let mut $properties = settings::open()?;
 
         if $properties.prefixes.contains_key(&$prefix) {
             return Err(anyhow!("Prefix `{}` already exists", $prefix))
@@ -54,7 +54,7 @@ macro_rules! add_prefix_prelude {
 
 macro_rules! std_prefix_path {
     ($prefix:expr) => {
-        (crate::settings::app_support_dir()?).join(crate::settings::PREFIXES_DIR_NAME).join($prefix)
+        (settings::app_support_dir()?).join(settings::PREFIXES_DIR_NAME).join($prefix)
     };
 }
 
@@ -72,7 +72,7 @@ macro_rules! prefix_path {
             },
             None => {
                 &std_prefix_path_string!($prefix)
-            }
+            },
         };
     };
 }
@@ -123,7 +123,7 @@ macro_rules! print_properties_json {
             },
             None => {
                 Some(std_prefix_path_string!(&$prefix))
-            }
+            },
         };
         print_json!({
             "prefix": $prefix,
@@ -135,7 +135,7 @@ macro_rules! print_properties_json {
 
 macro_rules! wine_cmd {
     ($prefix_path:expr) => {
-        Command::new((crate::settings::app_support_dir()?).join(GPTK_APP_FILE_NAME).join(WINE_EXECUTABLE_PATH).into_os_string().as_os_str())
+        Command::new((settings::app_support_dir()?).join(GPTK_APP_FILE_NAME).join(WINE_EXECUTABLE_PATH).into_os_string().as_os_str())
             .env("WINEPREFIX", $prefix_path)
     };
 }
@@ -171,7 +171,7 @@ pub fn add_prefix(prefix: String, dir: String, json: bool) -> Result<()> {
         println!("Prefix `{}` added", &prefix);
     }
 
-    crate::settings::save(&properties)
+    settings::save(&properties)
 }
 
 pub fn create_prefix(prefix: String, dir: Option<String>, json: bool) -> Result<()> {
@@ -184,7 +184,7 @@ pub fn create_prefix(prefix: String, dir: Option<String>, json: bool) -> Result<
         },
         None => {
             std_prefix_path_string!(&prefix)
-        }
+        },
     };
 
     let mut process = spawn_wine_cmd!(wine_cmd!(&prefix_path)
@@ -200,14 +200,14 @@ pub fn create_prefix(prefix: String, dir: Option<String>, json: bool) -> Result<
             println!("Prefix `{}` created", &prefix);
         }
         properties.prefixes.insert(prefix.clone(), prefix_properties);
-        crate::settings::save(&properties)
+        settings::save(&properties)
     } else {
         Err(anyhow!("Unable to create prefix: {status}"))
     }
 }
 
 pub fn default_prefix(prefix: Option<String>, json: bool) -> Result<()> {
-    let mut properties = crate::settings::open()?;
+    let mut properties = settings::open()?;
     match prefix {
         Some(prefix) => {
             if prefix.is_empty() {
@@ -217,7 +217,7 @@ pub fn default_prefix(prefix: Option<String>, json: bool) -> Result<()> {
                 } else {
                     println!("Default prefix unset");
                 }
-                crate::settings::save(&properties)
+                settings::save(&properties)
             } else if properties.prefixes.contains_key(&prefix) {
                 properties.default_prefix = Some(prefix.clone());
                 if json {
@@ -225,7 +225,7 @@ pub fn default_prefix(prefix: Option<String>, json: bool) -> Result<()> {
                 } else {
                     println!("Prefix `{}` set as default", &prefix);
                 }
-                crate::settings::save(&properties)
+                settings::save(&properties)
             } else {
                 Err(anyhow!(prefix_not_found!(prefix)))
             }
@@ -249,7 +249,7 @@ pub fn default_prefix(prefix: Option<String>, json: bool) -> Result<()> {
 }
 
 pub fn list_prefixes(json: bool) -> Result<()> {
-    let properties = crate::settings::open()?;
+    let properties = settings::open()?;
     if json {
         print_json!({
             "default": properties.default_prefix,
@@ -272,7 +272,7 @@ pub fn remove_prefix(prefix: Option<String>, json: bool) -> Result<()> {
         },
         None => {
             std_prefix_path!(&prefix)
-        }
+        },
     };
 
     std::fs::remove_dir_all(&prefix_path).with_context(|| format!("Unable to remove prefix directory `{}`", &prefix_path.display()))?;
@@ -287,7 +287,7 @@ pub fn remove_prefix(prefix: Option<String>, json: bool) -> Result<()> {
         println!("Prefix `{}` removed", &prefix);
     }
 
-    crate::settings::save(&properties)
+    settings::save(&properties)
 }
 
 pub fn prefix_config(prefix: Option<String>, settings: Vec<(String, String)>, json: bool) -> Result<()> {
@@ -384,7 +384,7 @@ pub fn prefix_config(prefix: Option<String>, settings: Vec<(String, String)>, js
 
         if json { print_properties_json!(prefix, prefix_properties); }
 
-        crate::settings::save(&properties)
+        settings::save(&properties)
     }
 }
 
@@ -406,41 +406,53 @@ pub fn run(command: String, prefix: Option<String>, args: Vec<String>, json: boo
     let status = process.wait()?;
 
     if status.success() {
-        if json { print_ok_json!(); };
+        if json { print_ok_json!(); }
         Ok(())
     } else {
         Err(anyhow!("Unable to run command: {status}"))
     }
 }
 
-pub fn install(path: String, json: bool) -> Result<()> {
-    let from = PathBuf::from(&path);
-    
-    if !from.exists() || !from.join(WINE_EXECUTABLE_PATH).exists() {
-        return Err(anyhow!("Path `{}` does not exist or is not a supported Game Porting Toolkit.app", &from.display()));
-    }
+pub fn update(dry_run: bool, force: bool, json: bool) -> Result<()> {
+    let mut properties = settings::open()?;
 
-    let to = (crate::settings::app_support_dir()?).join(GPTK_APP_FILE_NAME);
+    let (client, artifact) = downloader::get_latest()?;
 
-    if to.exists() {
-        std::fs::remove_dir_all(&to).with_context(|| format!("Unable to remove existing bundle `{}`", &to.display()))?;
-    }
+    if artifact.published_at > properties.runtime_version || force {
+        if dry_run {
+            if json {
+                print_json!({
+                    "status": 1,
+                    "version": artifact.name
+                });
+            } else {
+                println!("Update available: `{}`", artifact.name);
+            }
+            Ok(())
+        } else {
+            let archive_file = downloader::download(&client, &artifact.download_url, json)?;
 
-    let mut process = Command::new("ditto")
-        .arg(from)
-        .arg(to)
-        .spawn()?;
+            downloader::extract(&archive_file, &settings::app_support_dir()?, json)?;
 
-    let status = process.wait()?;
+            if json {
+                print_json!({
+                    "status": 0,
+                    "version": artifact.name,
+                });
+            } else {
+                println!("\rUpdated runtime to `{}`", artifact.name);
+            }
 
-    if status.success() {
+            properties.runtime_version = artifact.published_at;
+
+            settings::save(&properties)
+        }
+    } else {
         if json {
             print_ok_json!();
         } else {
-            println!("Game Porting Toolkit installed");
+            println!("Already up to date"); 
         }
         Ok(())
-    } else {
-        Err(anyhow!("Unable to install Game Porting Toolkit: {status}"))
     }
 }
