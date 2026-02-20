@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::{path::PathBuf, process::{Command, Stdio}};
 
 use anyhow::{anyhow, Context, Result};
 use serde_json::json;
@@ -137,6 +137,8 @@ macro_rules! wine_cmd {
     ($prefix_path:expr) => {
         Command::new((settings::app_support_dir()?).join(GPTK_APP_FILE_NAME).join(WINE_EXECUTABLE_PATH).into_os_string().as_os_str())
             .env("WINEPREFIX", $prefix_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
     };
 }
 
